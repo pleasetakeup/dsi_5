@@ -181,6 +181,7 @@ void dealBackLight(){
 	RCC1_Configuration();
 	 RCC_Configuration();
 	 uart_init(115200);	
+	printf("DFR0678 V1.0_20210303\r\n");
 	 if (RCC_GetFlagStatus(RCC_FLAG_IWDGRST) != RESET){
 		RCC_ClearFlag();	
 	   printf("WDT RST%d\r\n",4);		 
