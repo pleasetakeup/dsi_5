@@ -10,14 +10,26 @@
 #include "stm32f10x_tim.h"
 #include "stm32f10x_gpio.h"
 #include "stm32f10x_iwdg.h"
+
+//#define DSI_VERSION 1
+#define DSI_VERSION 2
+
+
 #include "adc.h"
 #include "led.h"
 #include "GT911.h"
 u8 buf[43];
 u8 i,j;
 #define REG_LEN  24
+#define GT911 911
+#define FT5216 5216
+u32 ic = 0;
+#if DSI_VERSION == 2
+
+
 extern sBackState_t light;
 extern  uint32_t lastVolt;
+#endif
 u8 ICN6211_REG_ADD[REG_LEN]={0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,0x28,0x29,0x34,0x36,0x86,0xB5,0x5C,0x2A,0x56,0x6B,0x69,0x10,0x11,0xB6,0x51,0x09};
 u8 ICN6211_REG_DATA[REG_LEN]={0x20,0xE0,0x13,0x28,0x30,0x58,0x00,0x0D,0x03,0x20,0x80,0x28,0x28,0xA0,0xFF,0x01,0x90,0x71,0x2A,0x40,0x88,0x20,0x20,0x10};
 TouchData MyTouchData;
@@ -139,7 +151,7 @@ static void IWDG_Config(uint8_t prv, uint16_t rlv){
 static void IWDG_Feed(void){
 	IWDG_ReloadCounter();
 }
-
+#if DSI_VERSION == 2
 void dealBackLight(){
 
    switch(light){
@@ -151,6 +163,7 @@ void dealBackLight(){
 		 break;	
 		 case  PWMTOPUT :{
 		       LED_Init();
+			    // printf("asa");
 		       BACKLIGHT = 0;
 		       light = PUTOUT;
 		 }
@@ -167,16 +180,164 @@ void dealBackLight(){
 		 }
     break;  
 	 }
+}
+#endif
+u32 checkIC(){
 
+	uint8_t i ,ack;
+	
+	Soft_IIC_Start();
+	
+	Soft_IIC_Send_Byte(GT_CMD_WR);
+  Soft_IIC_Wait_Ack();
+  Soft_IIC_Send_Byte(0x00);
+	ack = Soft_IIC_Wait_Ack();
+	printf("ack= %d\r\n",ack);	
+	if(ack == 0){
+	   return GT911;
+	
+	} else {
+	
+	   return FT5216;
+	}
+	Soft_IIC_Stop();
+
+}
+
+void ft5216Scan(){
+
+      Soft_IIC_Start();
+		 	Soft_IIC_Send_Byte(0x70);//读操作
+			while(Soft_IIC_Wait_Ack()){
+				Soft_IIC_Send_Byte(0x70);
+				
+			}
+			Soft_IIC_Send_Byte(0x00);
+			while(Soft_IIC_Wait_Ack()){
+				Soft_IIC_Send_Byte(0x00);
+			}
+			Soft_IIC_Stop();
+			Soft_IIC_Start();
+		 	Soft_IIC_Send_Byte(0x70|0x01);
+			while(Soft_IIC_Wait_Ack()){
+				Soft_IIC_Send_Byte(0x70|0x01);
+			}
+			//delay_ms(3);
+			for(i = 0;i < 32;i++){
+				buf[i] = Soft_IIC_Read_Byte(1);
+			}
+			buf[32] = Soft_IIC_Read_Byte(0);
+			Soft_IIC_Stop();
+			if((buf[2] == 0x00) || (buf[2] == 0xFF)){//没有被触摸
+				MyTouchData.point = buf[2];
+			}else if(buf[2] > 5){
+			
+			
+			}
+			else{
+					//BACKLIGHT = 1;
+					MyTouchData.point = buf[2];
+				if(MyTouchData.point > 0x05){
+					MyTouchData.point = 0x05;
+				}
+					for(j = 0;j<MyTouchData.point;j++){
+						uint16_t x = (uint16_t)(buf[3+6*j] & 0x0F)<<8 | (uint16_t) buf[4+6*j];
+						uint16_t y = (uint16_t)(buf[5+6*j] & 0x0F) << 8 | (uint16_t) buf[6+6*j];
+						uint8_t event = buf[0x3+6*j] >> 6;
+						uint8_t id = buf[5+6*j]>>4;
+						if(x > 800){
+							x =800;
+						}
+						if(y > 480){
+							y = 480;
+						}
+						if(x == 0){
+						  x = 1;
+						}
+						if(y == 0){
+						  y = 1;
+						}
+						x=800-x;
+						y=480-y;
+						MyTouchData.xLow[j] = x & 0xFF;
+						MyTouchData.xHigh[j] = (x >> 8) & 0xFF;
+						MyTouchData.yLow[j] = y & 0xFF;;
+						MyTouchData.yHigh[j] = (y >> 8) & 0xFF;
+						MyTouchData.event = event;
+						MyTouchData.finger[j] = id;
+						//printf("id =%d, x=%d, y=%d\r\n",id,x,y);
+					}
+			}
+
+}
+uint8_t status = 0; 
+uint8_t flag = 0;
+void  gt911Scan(){
+     
+     i = 0,j=0;
+			GT911_RD_Reg(0x814E, buf, 1);
+			if(buf[0] == 0x00 || buf[0] == 0xFF){
+			  status++;
+				if(status == 1){
+					delay_ms(1);
+					GT911_RD_Reg(0x814E, buf, 1);
+					goto test;
+				}else{
+				}
+				if(status > 4){
+					status = 4;
+					MyTouchData.point = buf[0];
+				}
+				
+			}else{
+				status = 0;
+test:
+				if((buf[0] & 0x80) && ((buf[0] & 0x0f) > 0)){
+					MyTouchData.point = buf[0] & 0x0f;
+					if(MyTouchData.point > 0x05){
+						MyTouchData.point = 0x05;
+					}
+					GT911_RD_Reg(0x814E, buf, 1+8*MyTouchData.point);
+					for(j = 0; j < MyTouchData.point; j++){
+						uint8_t id = buf[1+8*j];
+						uint16_t x = (uint16_t)(buf[3+8*j] & 0xFF) << 8 | (uint16_t) buf[2+8*j];
+						uint16_t y = (uint16_t)(buf[5+8*j] & 0xFF) << 8 | (uint16_t) buf[4+8*j];
+						//x = (uint16_t)(x/10) * 10;
+						//y = (uint16_t)(y/8) * 8;
+						if(x > 800){
+							x =800;
+						}
+						if(y > 480){
+							y = 480;
+						}
+						if(x == 0){
+						  x = 1;
+						}
+						if(y == 0){
+						  y = 1;
+						}
+						x=800-x;
+						y=480-y;
+
+						MyTouchData.xLow[j] = x & 0xFF;
+						MyTouchData.xHigh[j] = (x >> 8) & 0xFF;
+						MyTouchData.yLow[j] = y & 0xFF;
+						MyTouchData.yHigh[j] = (y >> 8) & 0xFF;
+						MyTouchData.finger[j] = id;
+						//printf("id =%d, x=%d, y=%d\r\n",id,x,y);
+					}
+				}
+			}
+			GT911_WR_Reg(0x814E, &flag, 1);
 
 
 
 }
  int main(void)
  {	 
-	uint8_t status = 0; 
-	uint8_t temp[4]={0};
-	uint8_t flag = 0;
+	
+	uint8_t temp[184]={0};
+	
 		GPIO_InitTypeDef  GPIO_InitStructure;	
 	RCC1_Configuration();
 	 RCC_Configuration();
@@ -187,10 +348,15 @@ void dealBackLight(){
 	   printf("WDT RST%d\r\n",4);		 
 	} else{
 		//Backlight_init();
+		#if DSI_VERSION == 2
 		light = PUTTOPWM;
 		//dealBackLight();
 	}
 	ADC_Configuration();
+		#else
+	  	  LED_Init();
+	}
+		#endif
 	IWDG_Config(IWDG_Prescaler_256,1000);
 	 	delay_init();	    	 //延时函数初始化	 
 	//GPIO_Configuration();
@@ -225,79 +391,42 @@ void dealBackLight(){
 	InitShow();
 
 	
-	BACKLIGHT =1;
+	//BACKLIGHT =1;
 	
 	GPIO_ResetBits(GPIOB,GPIO_Pin_0);
 	delay_ms(10);
 	GPIO_SetBits(GPIOB,GPIO_Pin_0);
-	delay_ms(10); 
-
-	GT911_RD_Reg(GT_PID_REG, temp, 4);
-
-	temp[0] = 0x02;
-	GT911_WR_Reg(GT_CTRL_REG, temp, 1);
-
-	GT911_RD_Reg(GT_CFGS_REG, temp, 1);
-
-  if(temp[0] != 0x50){
-		GT911_Send_Cfg(1);
+	delay_ms(50); 
+    #if DSI_VERSION == 2
+	if(checkIC() == GT911){
+	   temp[0] = 0x02;
+	   GT911_WR_Reg(GT_CTRL_REG, temp, 1);
+	   GT911_RD_Reg(GT_CFGS_REG, temp, 2);
+     if(temp[0] != 0x50){
+		   GT911_Send_Cfg(1);
+	   }
+	   delay_ms(10);
+	   temp[0] = 0x00;
+	   GT911_WR_Reg(GT_CTRL_REG, temp, 1);
+		 ic = GT911;
+   	} else {
+	   ic = FT5216;
 	}
-
-	delay_ms(10);
-	temp[0] = 0x00;
-	GT911_WR_Reg(GT_CTRL_REG, temp, 1);
+   #else
+        ic = FT5216;
+   #endif
 
 		while(1){
-		  i = 0,j=0;		
-		//	readVoltage();
+			#if DSI_VERSION == 2
 			dealBackLight();
-			GT911_RD_Reg(0x814E, buf, 1);
-			if(buf[0] == 0x00 || buf[0] == 0xFF){
-			  status++;
-				if(status == 1){
-					delay_ms(1);
-					GT911_RD_Reg(0x814E, buf, 1);
-					goto test;
-				}else{
-				}
-				if(status > 5){
-					status = 5;
-				}
-				MyTouchData.point = buf[0];
-			}else{
-				status = 0;
-test:
-				if((buf[0] & 0x80) && ((buf[0] & 0x0f) > 0)){
-					MyTouchData.point = buf[0] & 0x0f;
-					if(MyTouchData.point > 0x05){
-						MyTouchData.point = 0x05;
-					}
-					GT911_RD_Reg(0x814E, buf, 1+8*MyTouchData.point);
-					for(j = 0; j < MyTouchData.point; j++){
-						uint8_t id = buf[1+8*j];
-						uint16_t x = (uint16_t)(buf[3+8*j] & 0xFF) << 8 | (uint16_t) buf[2+8*j];
-						uint16_t y = (uint16_t)(buf[5+8*j] & 0xFF) << 8 | (uint16_t) buf[4+8*j];
-						//x = (uint16_t)(x/10) * 10;
-						//y = (uint16_t)(y/8) * 8;
-						if(x > 800){
-							x =800;
-						}
-						if(y > 480){
-							y = 480;
-						}
-					//	x=800-x;
-					//	y=480-y;
-						MyTouchData.xLow[j] = x & 0xFF;
-						MyTouchData.xHigh[j] = (x >> 8) & 0xFF;
-						MyTouchData.yLow[j] = y & 0xFF;
-						MyTouchData.yHigh[j] = (y >> 8) & 0xFF;
-						MyTouchData.finger[j] = id;
-						//printf("id =%d, x=%d, y=%d\r\n",id,x,y);
-					}
-				}
+			#endif
+			if(ic == GT911){
+			  gt911Scan();
+			
+			}else if(ic == FT5216){
+			  ft5216Scan();
 			}
-			GT911_WR_Reg(0x814E, &flag, 1);
-			delay_ms(7);
+			delay_ms(2);
 			IWDG_Feed();
 
 	 }

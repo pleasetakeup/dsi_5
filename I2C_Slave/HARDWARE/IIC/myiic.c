@@ -5,7 +5,8 @@
 #include "stdio.h"
 #include "stm32f10x_gpio.h"
 #include "stm32f10x_tim.h"
-
+//#define DSI_VERSION 1
+#define DSI_VERSION 2
 typedef enum { true=0, false} bool;
 uint16_t  MY_I2C_ADDRESS_TOUCH = 0x70 ;
 uint16_t  MY_I2C_ADDRESS_DISPLAY = 0x8A ;
@@ -115,8 +116,8 @@ void I2C_clear_STOPF(I2C_TypeDef* I2Cx) {
 	I2C_GetFlagStatus(I2Cx, I2C_FLAG_STOPF);
 	I2C_Cmd(I2Cx, ENABLE);
 }
-uint8_t data = 0;
-uint8_t senddate = 0;
+volatile uint8_t data = 0;
+volatile uint8_t senddate = 0;
 /*
 static void changAddress(void){
 	I2C_clear_ADDR(I2C1);
@@ -364,9 +365,17 @@ void I2C2_EV_IRQHandler(void) {
 				}else if(data == 0x04){
 				}else if(data == 0xFF){//打开背光
 					//BACKLIGHT = 1;
+          #if DSI_VERSION == 2
 					light = PUTTOPWM;
+					#else
+					  BACKLIGHT = 1;
+					#endif
 				}else if(data == 0x00){//关闭背光
+				  #if DSI_VERSION == 2
 					light = PWMTOPUT;
+					#else
+					BACKLIGHT = 0;
+					#endif
 					//BACKLIGHT = 0;
 				}
 
