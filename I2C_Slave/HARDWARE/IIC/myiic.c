@@ -17,6 +17,7 @@ volatile uint8_t ReadTouchWho = 1;
 //≥ı ºªØIIC
 bool stopTim = false;
 uint8_t freq = 0;
+volatile uint8_t I2C1_ReceviceDone = 0;
 
 void I2C2_Init()
 {
@@ -234,6 +235,7 @@ void I2C1_EV_IRQHandler(void) {
 			case I2C_EVENT_SLAVE_TRANSMITTER_ADDRESS_MATCHED: //EV1
 			//	printf("I2C_EVENT_SLAVE_TRANSMITTER_ADDRESS_MATCHED\r\n");
 				sendTouch();
+				I2C1_ReceviceDone = 1;
 				break;
 			case I2C_EVENT_SLAVE_BYTE_TRANSMITTED: //EV3
 				//Determine what you want to send

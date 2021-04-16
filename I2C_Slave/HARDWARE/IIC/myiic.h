@@ -23,6 +23,9 @@ typedef enum{
 }sBackState_t;
 
 
+
+extern volatile uint8_t I2C1_ReceviceDone;
+
 //IIC所有操作函数
 void I2C1_Init(void);                //初始化IIC的IO口				 
 void I2C2_Init(void);

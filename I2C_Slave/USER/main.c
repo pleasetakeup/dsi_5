@@ -342,7 +342,11 @@ test:
 	RCC1_Configuration();
 	 RCC_Configuration();
 	 uart_init(115200);	
-	printf("DFR0678 V1.0_20210303\r\n");
+	    #if DSI_VERSION == 2
+	   printf("DFR0678 V2.0_20210412\r\n");
+	#else
+	    printf("DFR0678 V1.0_20210412\r\n");
+	#endif
 	 if (RCC_GetFlagStatus(RCC_FLAG_IWDGRST) != RESET){
 		RCC_ClearFlag();	
 	   printf("WDT RST%d\r\n",4);		 
@@ -360,7 +364,7 @@ test:
 	IWDG_Config(IWDG_Prescaler_256,1000);
 	 	delay_init();	    	 //延时函数初始化	 
 	//GPIO_Configuration();
-	LED_Init();
+	//LED_Init();
 	
 	//TIM3_Configuration();
 	NVIC_Configuration(); 	 //设置NVIC中断分组2:2位抢占优先级，2位响应优先级
@@ -370,7 +374,7 @@ test:
 	I2C2_Init();
 	I2C1_Init();
 	ADC_Configuration();
-	Backlight_init();
+	//Backlight_init();
 	delay_ms(50);
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB,ENABLE);//使能PB端口时钟
 	GPIO_InitStructure.GPIO_Pin =GPIO_Pin_0|GPIO_Pin_1;// PB0和PB1端口配置
@@ -417,18 +421,24 @@ test:
    #endif
 
 		while(1){
-			#if DSI_VERSION == 2
-			dealBackLight();
-			#endif
-			if(ic == GT911){
-			  gt911Scan();
+			if(I2C1_ReceviceDone == 1){
+				I2C1_ReceviceDone = 0;
+				delay_ms(1);
+				#if DSI_VERSION == 2
+				dealBackLight();
+				#endif
+				if(ic == GT911){
+					gt911Scan();
 			
-			}else if(ic == FT5216){
-			  ft5216Scan();
-			}
-			delay_ms(2);
-			IWDG_Feed();
+				}else if(ic == FT5216){
+					ft5216Scan();
+				}
 
+				//delay_ms(2);
+				
+			}
+			//delay_ms(2);
+			IWDG_Feed();
 	 }
 	}
 
